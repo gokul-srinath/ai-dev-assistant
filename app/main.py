@@ -1,12 +1,27 @@
-from fastapi import FastAPI, Request, HTTPException
-from app.github import get_changed_files, get_file_content
-import hmac, hashlib, os
+from contextlib import asynccontextmanager
 from dotenv import load_dotenv
-
 load_dotenv()
-app = FastAPI()
+
+from fastapi import FastAPI, Request, HTTPException
+from app.embedder import embed_text
+from app.github import get_changed_files, get_file_content
+from app.parser import extract_chunks
+from app.qdrant_store import delete_chunks_by_filename, store_chunks, init_collection
+from app.reviewer import review_pr
+import hmac, hashlib, os
+
+
 
 WEBHOOK_SECRET = os.getenv("GITHUB_WEBHOOK_SECRET")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await init_collection()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 def verify_signature(payload: bytes, signature: str) -> bool:
     expected = "sha256=" + hmac.new(
@@ -32,9 +47,24 @@ async def webhook(request: Request):
         print(f"PR #{pr_number} opened in {repo_name}")
 
         files = await get_changed_files(repo_name, pr_number)
+        all_chunks = []
         for f in files:
             content = await get_file_content(f["raw_url"])
-            print(f"--- {f['filename']} ---")
-            print(content[:200])  # print first 200 chars
+            chunks = extract_chunks(f["filename"], content)
+            all_chunks.extend(chunks)
+            print(f"--- {f['filename']} -> {len(chunks)} chunks ---")
+
+        for f in files:
+            await delete_chunks_by_filename(f["filename"])
+            print(f"Deleted existing chunks for {f['filename']}")
+
+        embeddings = []
+        for chunk in all_chunks:
+            embedding = await embed_text(chunk["content"])
+            embeddings.append(embedding)
+        
+        await store_chunks(all_chunks, embeddings)
+
+        await review_pr(files)
 
     return {"status": "ok"}
