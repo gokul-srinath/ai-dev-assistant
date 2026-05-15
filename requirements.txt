@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+tree-sitter
+tree-sitter-python
+tree-sitter-javascript
+qdrant-client
+openai        # LM Studio uses OpenAI-compatible API
+httpx
+python-dotenv
+pygithub
