@@ -25,8 +25,7 @@ async def get_changed_files(repo_name: str, pr_number: int):
                     "patch": f.get("patch", ""),
                     "raw_url": f["raw_url"]
                 })
-        print(f"Changed files: {changed_files}")
-        
+        print(f"Changed files: {[x['filename'] for x in changed_files]}")
         return changed_files
     except Exception as e:
         print(f"Error getting changed files: {e}")
@@ -39,3 +38,11 @@ async def get_file_content(raw_url: str) -> str:
         response = await client.get(raw_url, headers=HEADERS)
         response.raise_for_status()
         return response.text
+
+async def post_pr_comment(repo_name: str, pr_number: int, body: str):
+    url = f"https://api.github.com/repos/{repo_name}/issues/{pr_number}/comments"
+    
+    async with httpx.AsyncClient() as client:
+        response = await client.post(url, headers=HEADERS, json={"body": body})
+        response.raise_for_status()
+        print(f"Comment posted to PR #{pr_number}")

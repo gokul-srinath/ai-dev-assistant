@@ -8,3 +8,5 @@ openai        # LM Studio uses OpenAI-compatible API
 httpx
 python-dotenv
 pygithub
+boto3
+asyncio

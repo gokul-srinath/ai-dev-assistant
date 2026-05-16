@@ -1,4 +1,4 @@
-from qdrant_client import AsyncQdrantClient
+from qdrant_client import AsyncQdrantClient, models
 from qdrant_client.models import (
     VectorParams,
     Distance,
@@ -71,10 +71,11 @@ async def store_chunks(chunks: list[dict], embeddings: list[list[float]]):
 
 
 async def search_chunks(query_embedding: list[float], top_k: int = 5) -> list[dict]:
-    results = await client.search(
+    results = await client.query_points(
         collection_name=COLLECTION_NAME,
-        query_vector=query_embedding,
-        limit=top_k
+    query=query_embedding,
+        limit=top_k,
+        with_payload=True,
     )
 
     return [
@@ -86,5 +87,5 @@ async def search_chunks(query_embedding: list[float], top_k: int = 5) -> list[di
             "end_line": r.payload["end_line"],
             "content": r.payload["content"]
         }
-        for r in results
+        for r in results.points
     ]

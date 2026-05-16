@@ -4,10 +4,10 @@ load_dotenv()
 
 from fastapi import FastAPI, Request, HTTPException
 from app.embedder import embed_text
-from app.github import get_changed_files, get_file_content
+from app.github import get_changed_files, get_file_content, post_pr_comment
 from app.parser import extract_chunks
 from app.qdrant_store import delete_chunks_by_filename, store_chunks, init_collection
-from app.reviewer import review_pr
+from app.bedrock_reviewer import review_pr as bedrock_reviewer_pr
 import hmac, hashlib, os
 
 
@@ -52,7 +52,7 @@ async def webhook(request: Request):
             content = await get_file_content(f["raw_url"])
             chunks = extract_chunks(f["filename"], content)
             all_chunks.extend(chunks)
-            print(f"--- {f['filename']} -> {len(chunks)} chunks ---")
+            # print(f"--- {f['filename']} -> {len(chunks)} chunks ---")
 
         for f in files:
             await delete_chunks_by_filename(f["filename"])
@@ -65,6 +65,13 @@ async def webhook(request: Request):
         
         await store_chunks(all_chunks, embeddings)
 
-        await review_pr(files)
+        reviews = await bedrock_reviewer_pr(files)
+        
+        body = "\n\n---\n\n".join(
+            f"### `{r['filename']}`\n{r['comment']}"
+            for r in reviews
+        )
+        await post_pr_comment(repo_name, pr_number, body)
+        print(f"Comment posted to PR #{pr_number}")
 
     return {"status": "ok"}
