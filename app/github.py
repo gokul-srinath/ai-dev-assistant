@@ -8,6 +8,24 @@ HEADERS = {
     "Accept": "application/vnd.github+json"
 }
 
+async def get_all_repo_files(repo_name: str, branch: str = "main") -> list[dict]:
+    url = f"https://api.github.com/repos/{repo_name}/git/trees/{branch}?recursive=1"
+    
+    async with httpx.AsyncClient(follow_redirects=True) as client:
+        response = await client.get(url, headers=HEADERS)
+        response.raise_for_status()
+        tree = response.json()
+
+    files = []
+    for item in tree["tree"]:
+        if item["type"] == "blob" and item["path"].endswith((".ts", ".tsx", ".js", ".jsx")):
+            files.append({
+                "filename": item["path"],
+                "raw_url": f"https://raw.githubusercontent.com/{repo_name}/{branch}/{item['path']}"
+            })
+
+    return files
+
 async def get_changed_files(repo_name: str, pr_number: int):
     try:
         url = f"https://api.github.com/repos/{repo_name}/pulls/{pr_number}/files"

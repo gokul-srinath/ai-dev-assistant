@@ -1,4 +1,4 @@
-from qdrant_client import AsyncQdrantClient, models
+from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import (
     VectorParams,
     Distance,
@@ -15,9 +15,18 @@ VECTOR_SIZE = 768
 
 from qdrant_client.models import Filter, FieldCondition, MatchValue
 
-async def delete_chunks_by_filename(filename: str):
+# def get_collection_name(pr_number: int = None) -> str:
+#     if pr_number:
+#         return f"code_chunks_pr_{pr_number}"
+#     return COLLECTION_NAME
+
+async def delete_collection(collection_name: str):
+    await client.delete_collection(collection_name)
+    print(f"Collection '{collection_name}' deleted")
+
+async def delete_chunks_by_filename(filename: str, collection_name: str = COLLECTION_NAME):
     await client.delete(
-        collection_name=COLLECTION_NAME,
+        collection_name=collection_name,
         points_selector=Filter(
             must=[
                 FieldCondition(
@@ -30,24 +39,18 @@ async def delete_chunks_by_filename(filename: str):
     print(f"Deleted existing chunks for {filename}")
 
     
-async def init_collection():
+async def init_collection(collection_name: str = "code_chunks"):
     existing = await client.get_collections()
     names = [c.name for c in existing.collections]
-
-    if COLLECTION_NAME not in names:
+    if collection_name not in names:
         await client.create_collection(
-            collection_name=COLLECTION_NAME,
-            vectors_config=VectorParams(
-                size=VECTOR_SIZE,
-                distance=Distance.COSINE
-            )
+            collection_name=collection_name,
+            vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE)
         )
-        print(f"Collection '{COLLECTION_NAME}' created")
-    else:
-        print(f"Collection '{COLLECTION_NAME}' already exists")
+        print(f"Collection '{collection_name}' created")
 
 
-async def store_chunks(chunks: list[dict], embeddings: list[list[float]]):
+async def store_chunks(chunks: list[dict], embeddings: list[list[float]], collection_name: str = COLLECTION_NAME):
     points = [
         PointStruct(
             id=str(uuid.uuid4()),
@@ -64,16 +67,16 @@ async def store_chunks(chunks: list[dict], embeddings: list[list[float]]):
     ]
 
     await client.upsert(
-        collection_name=COLLECTION_NAME,
+        collection_name=collection_name,
         points=points
     )
     print(f"Stored {len(points)} chunks in Qdrant")
 
 
-async def search_chunks(query_embedding: list[float], top_k: int = 5) -> list[dict]:
+async def search_chunks(query_embedding: list[float], top_k: int = 5, collection_name: str = COLLECTION_NAME) -> list[dict]:
     results = await client.query_points(
-        collection_name=COLLECTION_NAME,
-    query=query_embedding,
+        collection_name=collection_name,
+        query=query_embedding,  
         limit=top_k,
         with_payload=True,
     )
