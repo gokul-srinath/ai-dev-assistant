@@ -62,11 +62,39 @@ async def review_patch(filename: str, patch: str, pr_number: int = None) -> str:
     return response["output"]["message"]["content"][0]["text"]
 
 
-async def review_pr(files: list[dict], pr_number: int) -> list[dict]:
-    reviews = []
-    for f in files:
-        if not f.get("patch"):
-            continue
-        comment = await review_patch(f["filename"], f["patch"], pr_number)
-        reviews.append({"filename": f["filename"], "comment": comment})
-    return reviews
+async def review_pr(files, pr_number):
+    tasks = [
+        review_patch(f["filename"], f["patch"], pr_number)
+        for f in files if f.get("patch")
+    ]
+    results = await asyncio.gather(*tasks)
+    return [
+        {"filename": f["filename"], "comment": comment}
+        for f, comment in zip(files, results)
+        if f.get("patch")
+    ]
+
+async def validate_prd(prd: str, reviews: list[dict]) -> str:
+    combined_review = "\n\n".join(
+        f"### {r['filename']}\n{r['comment']}"
+        for r in reviews
+    )
+
+    system_prompt = """You are a technical product manager validating if a pull request satisfies the PRD requirements.
+You will be given the PRD and the code review of the PR.
+Return a markdown checklist of each requirement — whether it is met, not met, or cannot be determined from the changes."""
+
+    user_message = (
+        f"## PRD\n{prd}\n\n"
+        f"## Code Review\n{combined_review}"
+    )
+
+    response = await asyncio.to_thread(
+        bedrock.converse,
+        modelId=BEDROCK_MODEL,
+        system=[{"text": system_prompt}],
+        messages=[{"role": "user", "content": [{"text": user_message}]}],
+        inferenceConfig={"temperature": 0.1},
+    )
+
+    return response["output"]["message"]["content"][0]["text"]

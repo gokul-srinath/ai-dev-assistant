@@ -8,6 +8,15 @@ HEADERS = {
     "Accept": "application/vnd.github+json"
 }
 
+async def get_prd(repo_name: str, branch: str = "main") -> str:
+    url = f"https://raw.githubusercontent.com/{repo_name}/{branch}/PRD.md"
+    async with httpx.AsyncClient(follow_redirects=True) as client:
+        response = await client.get(url, headers=HEADERS)
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        return response.text
+
 async def get_all_repo_files(repo_name: str, branch: str = "main") -> list[dict]:
     url = f"https://api.github.com/repos/{repo_name}/git/trees/{branch}?recursive=1"
     

@@ -4,7 +4,8 @@ load_dotenv()
 
 from fastapi import FastAPI, Request, HTTPException
 from app.embedder import embed_text
-from app.github import get_all_repo_files, get_changed_files, get_file_content, post_pr_comment
+from app.github import get_all_repo_files, get_changed_files, get_file_content, post_pr_comment, get_prd
+from app.bedrock_reviewer import validate_prd
 from app.parser import extract_chunks
 from app.qdrant_store import delete_chunks_by_filename, delete_collection, store_chunks, init_collection
 from app.bedrock_reviewer import review_pr as bedrock_reviewer_pr
@@ -79,7 +80,7 @@ async def webhook(request: Request):
     if action in ["opened", "synchronize"]:
         pr_number = data["pull_request"]["number"]
         repo_name = data["repository"]["full_name"]
-        
+        print("branch: ", data["pull_request"]["head"]["ref"])
         print(f"PR #{pr_number} {action.capitalize()} in {repo_name}")
 
         pr_collection = f"code_chunks_pr_{pr_number}"
@@ -94,14 +95,18 @@ async def webhook(request: Request):
             all_chunks.extend(chunks)
             # print(f"--- {f['filename']} -> {len(chunks)} chunks ---")
 
-        embeddings = []
-        for chunk in all_chunks:
-            embedding = await embed_text(chunk["content"])
-            embeddings.append(embedding)
+        embeddings = [await embed_text(chunk["content"]) for chunk in all_chunks]
+
         
         await store_chunks(all_chunks, embeddings, collection_name=pr_collection)
+        prd_validation = None
+        prd_section = ""
         try:
             reviews = await bedrock_reviewer_pr(files, pr_number)
+            prd = await get_prd(repo_name, data["pull_request"]["head"]["ref"])
+            if(prd):
+                prd_validation = await validate_prd(prd, reviews)
+                prd_section = f"\n\n---\n\n## PRD Validation\n\n{prd_validation}"
         except Exception as e:
             print(f"Error reviewing PR #{pr_number}: {e}")
             reviews = []
@@ -111,7 +116,7 @@ async def webhook(request: Request):
                     f"### `{r['filename']}`\n{r['comment']}"
                     for r in reviews
                 )
-                await post_pr_comment(repo_name, pr_number, f"## AI Code Review\n\n{body}")
+                await post_pr_comment(repo_name, pr_number, f"## AI Code Review\n\n{body}{prd_section if prd_validation else ''}")
                 print(f"AI Code Review posted to PR #{pr_number}")
             except Exception as e:
                 print(f"Error posting AI Code Review: {e}")
@@ -129,12 +134,13 @@ async def webhook(request: Request):
             content = await get_file_content(f["raw_url"])
             chunks = extract_chunks(f["filename"], content)
             await delete_chunks_by_filename(f["filename"], collection_name=main_collection)
-            embeddings = []
-            for chunk in chunks:
-                embedding = await embed_text(chunk["content"])
-                embeddings.append(embedding)
+            embeddings = [await embed_text(chunk["content"]) for chunk in chunks]
             await store_chunks(chunks, embeddings, collection_name=main_collection)
             print(f"Main index updated with merged PR #{pr_number}")
+
+        all_chunks = await get_all_chunks()
+        bm25_index.build(all_chunks)
+        print("BM25 index rebuilt after merge")
         #always delete the PR collection    
         await delete_collection(pr_collection)
     return {"status": "ok"}
