@@ -92,3 +92,21 @@ async def search_chunks(query_embedding: list[float], top_k: int = 5, collection
         }
         for r in results.points
     ]
+
+async def get_all_chunks(collection_name: str = "code_chunks") -> list[dict]:
+    results = await client.scroll(
+        collection_name=collection_name,
+        limit=1000,
+        with_payload=True,
+        with_vectors=False
+    )
+    return [
+        {
+            "filename": r.payload["filename"],
+            "type": r.payload["type"],
+            "start_line": r.payload["start_line"],
+            "end_line": r.payload["end_line"],
+            "content": r.payload["content"]
+        }
+        for r in results[0]
+    ]

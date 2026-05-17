@@ -9,6 +9,8 @@ from app.parser import extract_chunks
 from app.qdrant_store import delete_chunks_by_filename, delete_collection, store_chunks, init_collection
 from app.bedrock_reviewer import review_pr as bedrock_reviewer_pr
 import hmac, hashlib, os
+from app.bm25_store import bm25_index
+from app.qdrant_store import get_all_chunks
 
 
 
@@ -39,6 +41,9 @@ async def lifespan(app: FastAPI):
     branch = os.getenv("REPO_BRANCH","master")
     if(repo_name):
         await index_full_repo(repo_name, branch)
+        all_chunks = await get_all_chunks()
+        bm25_index.build(all_chunks)
+        print(f"BM25 index built with {len(all_chunks)} chunks")
     else:
         print("No repo name provided")
     yield

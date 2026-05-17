@@ -5,6 +5,8 @@ from app.embedder import embed_text
 from app.qdrant_store import search_chunks
 import asyncio
 
+from app.retriever import hybrid_search
+
 bedrock = boto3.client(
     "bedrock-runtime",
     region_name=os.getenv("AWS_REGION", "ap-south-1"),
@@ -32,11 +34,8 @@ async def review_patch(filename: str, patch: str, pr_number: int = None) -> str:
     query_embedding = await embed_text(patch)
     pr_collection = f"code_chunks_pr_{pr_number}"
 
-
-    # search main index for existing codebase context
-    main_chunks = await search_chunks(query_embedding, top_k=3, collection_name="code_chunks")
-    # search PR index for changed file context
-    pr_chunks = await search_chunks(query_embedding, top_k=3, collection_name=pr_collection)
+    main_chunks = await hybrid_search(patch, top_k=3, collection_name="code_chunks")
+    pr_chunks = await hybrid_search(patch, top_k=3, collection_name=pr_collection)
 
     all_chunks = main_chunks + pr_chunks
 
