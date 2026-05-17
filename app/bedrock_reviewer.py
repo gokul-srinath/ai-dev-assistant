@@ -31,7 +31,7 @@ Be specific — reference line numbers and variable names. If the change looks g
 
 
 async def review_patch(filename: str, patch: str, pr_number: int = None) -> str:
-    query_embedding = await embed_text(patch)
+    # query_embedding = await embed_text(patch)
     pr_collection = f"code_chunks_pr_{pr_number}"
 
     main_chunks = await hybrid_search(patch, top_k=3, collection_name="code_chunks")
