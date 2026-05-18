@@ -7,6 +7,9 @@ class BM25Index:
         self.index = None
 
     def build(self, chunks: list[dict]):
+        if not chunks:
+            print("BM25: no chunks to index, skipping")
+            return
         self.chunks = chunks
         tokenized = [self._tokenize(c["content"]) for c in chunks]
         self.index = BM25Okapi(tokenized)

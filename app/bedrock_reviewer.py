@@ -2,7 +2,9 @@ import boto3
 import os
 
 from app.embedder import embed_text
-from app.qdrant_store import search_chunks
+# from app.qdrant_store import search_chunks
+from app.qdrant_store import search_prd
+
 import asyncio
 
 from app.retriever import hybrid_search
@@ -74,19 +76,31 @@ async def review_pr(files, pr_number):
         if f.get("patch")
     ]
 
-async def validate_prd(prd: str, reviews: list[dict]) -> str:
-    combined_review = "\n\n".join(
-        f"### {r['filename']}\n{r['comment']}"
-        for r in reviews
+
+async def validate_prd(files_content: dict, reviews: list[dict]) -> str:
+    # use the review text as query to find relevant PRD sections
+    query = "\n".join(r["comment"] for r in reviews)
+    query_embedding = await embed_text(query)
+    relevant_prd_chunks = await search_prd(query_embedding, top_k=5)
+
+    prd_context = "\n\n".join(c["content"] for c in relevant_prd_chunks)
+
+    combined_code = "\n\n".join(
+        f"### {filename}\n```\n{content}\n```"
+        for filename, content in files_content.items()
     )
 
-    system_prompt = """You are a technical product manager validating if a pull request satisfies the PRD requirements.
-You will be given the PRD and the code review of the PR.
-Return a markdown checklist of each requirement — whether it is met, not met, or cannot be determined from the changes."""
+    system_prompt = """You are a technical product manager validating a pull request against PRD requirements.
+Rules:
+- Only the actual file contents are source of truth
+- Comments do not count as implementation
+- If a requirement is partially met mark it NOT MET
+- Met or Not Met only, no partial credit
+- Do not reference what was previously there, only what exists now"""
 
     user_message = (
-        f"## PRD\n{prd}\n\n"
-        f"## Code Review\n{combined_review}"
+        f"## Relevant PRD Sections\n{prd_context}\n\n"
+        f"## Actual PR File Contents\n{combined_code}"
     )
 
     response = await asyncio.to_thread(

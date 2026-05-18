@@ -15,6 +15,18 @@ VECTOR_SIZE = 768
 
 from qdrant_client.models import Filter, FieldCondition, MatchValue
 
+
+PRD_COLLECTION = "prd_chunks"
+
+async def init_prd_collection():
+    await init_collection(PRD_COLLECTION)
+
+async def store_prd_chunks(chunks: list[dict], embeddings: list[list[float]]):
+    await store_chunks(chunks, embeddings, collection_name=PRD_COLLECTION)
+
+async def search_prd(query_embedding: list[float], top_k: int = 5) -> list[dict]:
+    return await search_chunks(query_embedding, top_k=top_k, collection_name=PRD_COLLECTION)
+
 # def get_collection_name(pr_number: int = None) -> str:
 #     if pr_number:
 #         return f"code_chunks_pr_{pr_number}"
